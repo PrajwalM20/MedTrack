@@ -1,531 +1,507 @@
-const express = require("express");
-const fs = require("fs");
-const path = require("path");
+// ============================================================
+//  MedTrack — Express + MongoDB Atlas Backend
+//  File: server.js  (place this in your project ROOT)
+// ============================================================
+
+const express  = require('express');
+const mongoose = require('mongoose');
+const bcrypt   = require('bcryptjs');
+const jwt      = require('jsonwebtoken');
+const cors     = require('cors');
+const path     = require('path');
+require('dotenv').config();          // loads .env file
 
 const app = express();
+
+// ── Middleware ───────────────────────────────────────────────
+app.use(cors());
 app.use(express.json());
-app.use(express.static("public"));
 
-// Page Routes
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public/pages/index.html')));
-app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public/pages/login.html')));
-app.get('/admin-dashboard', (req, res) => res.sendFile(path.join(__dirname, 'public/pages/admin-dashboard.html')));
-app.get('/ward-dashboard', (req, res) => res.sendFile(path.join(__dirname, 'public/pages/ward-dashboard.html')));
-app.get('/medicines', (req, res) => res.sendFile(path.join(__dirname, 'public/pages/medicines.html')));
-app.get('/patients', (req, res) => res.sendFile(path.join(__dirname, 'public/pages/patients.html')));
-app.get('/orders', (req, res) => res.sendFile(path.join(__dirname, 'public/pages/orders.html')));
-app.get('/analytics', (req, res) => res.sendFile(path.join(__dirname, 'public/pages/analytics.html')));
+// Serve CSS, JS and static assets from public/
+app.use(express.static(path.join(__dirname, 'public')));
+// NOTE: HTML files live under public/pages not a top-level "pages" folder.
+// The second static middleware was pointing at a non-existent directory
+// and caused 404 errors when the frontend tried to load pages. Remove it.
 
-const DATA_FILE = path.join(__dirname, "data.json");
+// ── MongoDB Connection ───────────────────────────────────────
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log('✅ MongoDB Atlas connected successfully'))
+  .catch(err => { console.error('❌ MongoDB connection error:', err.message); process.exit(1); });
 
-/* DATABASE */
-function readDB() {
-    if (!fs.existsSync(DATA_FILE)) {
-        const initial = { medicines: [], patients: [], sales: [], assignments: [], orders: [] };
-        fs.writeFileSync(DATA_FILE, JSON.stringify(initial, null, 2));
-        return initial;
+// ============================================================
+//  SCHEMAS & MODELS
+// ============================================================
+
+// ── User (Admin / Ward) ──────────────────────────────────────
+const userSchema = new mongoose.Schema({
+    email:     { type: String, required: true, unique: true, lowercase: true },
+    password:  { type: String },                      // null for SSO users
+    role:      { type: String, enum: ['admin','ward'], default: 'ward' },
+    ward:      { type: String },                      // e.g. "ICU", "Pediatrics"
+    createdAt: { type: Date, default: Date.now }
+});
+const User = mongoose.model('User', userSchema);
+
+// ── Medicine ─────────────────────────────────────────────────
+const medicineSchema = new mongoose.Schema({
+    name:       { type: String, required: true },
+    expiry:     { type: String, required: true },     // "YYYY-MM-DD"
+    quantity:   { type: Number, required: true, min: 0 },
+    batch:      { type: String },
+    price:      { type: Number, default: 0 },
+    discount:   { type: Number, default: 0 },
+    finalPrice: { type: Number, default: 0 },
+    createdAt:  { type: Date, default: Date.now }
+});
+const Medicine = mongoose.model('Medicine', medicineSchema);
+
+// ── Patient ──────────────────────────────────────────────────
+const patientSchema = new mongoose.Schema({
+    name:        { type: String, required: true },
+    age:         { type: Number, required: true },
+    gender:      { type: String, enum: ['Male','Female','Other'] },
+    disease:     { type: String, required: true },
+    nextRecheck: { type: String },
+    medicines:   [{ type: mongoose.Schema.Types.ObjectId, ref: 'Medicine' }],
+    createdAt:   { type: Date, default: Date.now }
+});
+const Patient = mongoose.model('Patient', patientSchema);
+
+// ── Order ────────────────────────────────────────────────────
+const orderItemSchema = new mongoose.Schema({
+    medicineId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Medicine' },
+    medicineName: String,
+    quantity:     Number,
+    unitPrice:    Number,
+    discount:     Number,
+    lineTotal:    Number
+}, { _id: false });
+
+const orderSchema = new mongoose.Schema({
+    ward:        { type: String, required: true },
+    room:        { type: String, required: true },
+    doctor:      { type: String, default: 'Ward Staff' },
+    items:       [orderItemSchema],
+    // Legacy single-item support
+    medicineId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Medicine' },
+    medicineName: String,
+    quantity:     Number,
+    // Bill totals
+    subtotal:    { type: Number, default: 0 },
+    discount:    { type: Number, default: 0 },
+    tax:         { type: Number, default: 0 },
+    total:       { type: Number, default: 0 },
+    status:      { type: String, enum: ['Pending','Processing','Delivered'], default: 'Pending' },
+    date:        { type: String },
+    time:        { type: String },
+    createdAt:   { type: Date, default: Date.now }
+});
+const Order = mongoose.model('Order', orderSchema);
+
+// ============================================================
+//  HELPERS
+// ============================================================
+
+// Verify JWT — used as middleware on protected routes
+function authMiddleware(req, res, next) {
+    const header = req.headers.authorization;
+    if (!header) return res.status(401).json({ error: 'No token provided' });
+    const token = header.split(' ')[1];
+    try {
+        req.user = jwt.verify(token, process.env.JWT_SECRET);
+        next();
+    } catch {
+        res.status(401).json({ error: 'Invalid or expired token' });
     }
-    const db = JSON.parse(fs.readFileSync(DATA_FILE));
-    if (!db.orders) db.orders = [];
-    return db;
 }
 
-function writeDB(data) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+// Admin-only gate
+function adminOnly(req, res, next) {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access only' });
+    next();
 }
 
-/* AUTHENTICATION */
-app.post("/api/login", (req, res) => {
-    const { email, password, googleToken } = req.body;
+// Calculate bill from items array
+function calcBill(items) {
+    let subtotal = 0;
+    let totalDiscount = 0;
+    const processedItems = items.map(it => {
+        const unit   = Number(it.unitPrice  || 0);
+        const disc   = Number(it.discount   || 0);
+        const qty    = Number(it.quantity   || 1);
+        const discAmt  = unit * (disc / 100);
+        const lineTotal = (unit - discAmt) * qty;
+        subtotal      += unit * qty;
+        totalDiscount += discAmt * qty;
+        return { ...it, unitPrice: unit, discount: disc, lineTotal };
+    });
+    const afterDiscount = subtotal - totalDiscount;
+    const tax   = parseFloat((afterDiscount * 0.05).toFixed(2));
+    const total = parseFloat((afterDiscount + tax).toFixed(2));
+    return { processedItems, subtotal, discount: totalDiscount, tax, total };
+}
 
-    // Simulate google login or email login
-    if (googleToken || (email && password)) {
-        const e = email || "google-user@example.com";
-        // If the email includes 'admin', treat as admin, else ward
-        const role = e.toLowerCase().includes("admin") ? "admin" : "ward";
-        const token = "mock-token-" + Date.now();
-        res.json({ token, role, email: e });
-    } else {
-        res.status(401).json({ error: "Invalid credentials" });
-    }
-});
-
-/* MEDICINES */
-
-app.get("/api/medicines", (req, res) => {
-    const db = readDB();
-    res.json(db.medicines);
-});
-
-app.post("/api/medicines", (req, res) => {
-    const db = readDB();
-    let { name, expiry, quantity, batch = "", price = 0, discount = 0 } = req.body;
-
-    if (!name || !expiry || !quantity)
-        return res.status(400).json({ error: "Missing fields" });
-
-    quantity = parseInt(quantity);
-    price = parseFloat(price) || 0;
-    discount = parseFloat(discount) || 0;
-
-    const finalPrice = price - (price * discount / 100);
-
-    const newMed = {
-        id: Date.now().toString(),
-        name,
-        expiry,
-        quantity,
-        batch,
-        price,
-        discount,
-        finalPrice
+function nowStrings() {
+    const now = new Date();
+    return {
+        date: now.toISOString().split('T')[0],
+        time: now.toTimeString().split(' ')[0]
     };
+}
 
-    db.medicines.push(newMed);
-    writeDB(db);
-    res.json(newMed);
-});
+// ============================================================
+//  AUTH ROUTES
+// ============================================================
 
-app.put("/api/medicines/:id", (req, res) => {
-    const db = readDB();
-    const med = db.medicines.find(m => m.id === req.params.id);
-    if (!med) return res.status(404).json({ error: "Not found" });
+// POST /api/login
+app.post('/api/login', async (req, res) => {
+    try {
+        const { email, password, googleToken } = req.body;
 
-    Object.assign(med, req.body);
+        let user = await User.findOne({ email });
 
-    med.quantity = parseInt(med.quantity);
-    med.price = parseFloat(med.price) || 0;
-    med.discount = parseFloat(med.discount) || 0;
-    med.finalPrice = med.price - (med.price * med.discount / 100);
-
-    writeDB(db);
-    res.json(med);
-});
-
-app.delete("/api/medicines/:id", (req, res) => {
-    const db = readDB();
-    db.medicines = db.medicines.filter(m => m.id !== req.params.id);
-    writeDB(db);
-    res.json({ message: "Deleted" });
-});
-
-app.post("/api/medicines/:id/reduce", (req, res) => {
-    const db = readDB();
-    const med = db.medicines.find(m => m.id === req.params.id);
-    if (!med) return res.status(404).json({ error: "Not found" });
-
-    const qty = parseInt(req.body.quantity);
-    if (!qty || qty <= 0)
-        return res.status(400).json({ error: "Invalid quantity" });
-    if (med.quantity < qty)
-        return res.status(400).json({ error: `Insufficient stock. Only ${med.quantity} available.` });
-
-    med.quantity -= qty;
-    writeDB(db);
-    res.json({ message: "Reduced", remaining: med.quantity });
-});
-
-/* PATIENTS */
-
-app.get("/api/patients", (req, res) => {
-    const db = readDB();
-    res.json(db.patients);
-});
-
-app.post("/api/patients", (req, res) => {
-    const db = readDB();
-    const { name, age, gender, disease, nextRecheck } = req.body;
-
-    if (!name || !age || !gender || !disease)
-        return res.status(400).json({ error: "Missing fields" });
-
-    const newPatient = {
-        id: Date.now().toString(),
-        name,
-        age: parseInt(age),
-        gender,
-        disease,
-        nextRecheck: nextRecheck || null,
-        medicines: []
-    };
-
-    db.patients.push(newPatient);
-    writeDB(db);
-    res.json(newPatient);
-});
-
-app.put("/api/patients/:id", (req, res) => {
-    const db = readDB();
-    const p = db.patients.find(x => x.id === req.params.id);
-    if (!p) return res.status(404).json({ error: "Not found" });
-
-    Object.assign(p, req.body);
-    p.age = parseInt(p.age);
-    if (!p.nextRecheck) p.nextRecheck = null;
-
-    writeDB(db);
-    res.json(p);
-});
-
-app.delete("/api/patients/:id", (req, res) => {
-    const db = readDB();
-    db.patients = db.patients.filter(p => p.id !== req.params.id);
-    writeDB(db);
-    res.json({ message: "Deleted" });
-});
-
-/* ASSIGN */
-
-app.post("/api/assign", (req, res) => {
-    const db = readDB();
-    const { patientId, medicineId, quantity, dosage } = req.body;
-
-    const patient = db.patients.find(p => p.id === patientId);
-    const med = db.medicines.find(m => m.id === medicineId);
-
-    if (!patient || !med)
-        return res.status(404).json({ error: "Not found" });
-
-    const qty = parseInt(quantity);
-    if (!qty || med.quantity < qty)
-        return res.status(400).json({ error: "Invalid quantity" });
-
-    med.quantity -= qty;
-
-    patient.medicines.push({
-        id: Date.now().toString(),
-        medicineId,
-        medicineName: med.name,
-        quantity: qty,
-        dosage
-    });
-
-    writeDB(db);
-    res.json({ message: "Assigned" });
-});
-
-/* DASHBOARD */
-
-app.get("/api/dashboard", (req, res) => {
-    const db = readDB();
-
-    const totalMedicines = db.medicines.length;
-    const totalPatients = db.patients.length;
-    const lowStockCount = db.medicines.filter(m => m.quantity <= 10).length;
-
-    const today = new Date().toISOString().split('T')[0];
-    const todaySales = db.sales.filter(s => s.date === today);
-    const todayRevenue = todaySales.reduce((sum, s) => sum + s.amount, 0);
-
-    res.json({
-        totalMedicines,
-        totalPatients,
-        lowStockCount,
-        todayRevenue
-    });
-});
-
-/* SALES */
-
-app.post("/api/sales", (req, res) => {
-    const db = readDB();
-    const { medicineId, medicineName, quantity, amount } = req.body;
-
-    if (!medicineId || !quantity || !amount)
-        return res.status(400).json({ error: "Missing fields" });
-
-    const sale = {
-        id: Date.now().toString(),
-        medicineId,
-        medicineName,
-        quantity: parseInt(quantity),
-        amount: parseFloat(amount),
-        date: new Date().toISOString().split('T')[0],
-        time: new Date().toTimeString().split(' ')[0]
-    };
-
-    db.sales.push(sale);
-    writeDB(db);
-    res.json(sale);
-});
-
-app.get("/api/sales", (req, res) => {
-    const db = readDB();
-    res.json(db.sales.reverse());
-});
-
-app.get("/api/sales/daily-revenue", (req, res) => {
-    const db = readDB();
-    const revenueByDate = {};
-
-    db.sales.forEach(s => {
-        if (!revenueByDate[s.date]) revenueByDate[s.date] = 0;
-        revenueByDate[s.date] += s.amount;
-    });
-
-    res.json(revenueByDate);
-});
-
-/* ANALYTICS */
-
-app.get("/api/analytics/summary", (req, res) => {
-    const db = readDB();
-
-    const totalRevenue = db.sales.reduce((sum, s) => sum + s.amount, 0);
-    const totalSales = db.sales.length;
-
-    const medicinesSold = {};
-    db.sales.forEach(s => {
-        if (!medicinesSold[s.medicineName]) medicinesSold[s.medicineName] = 0;
-        medicinesSold[s.medicineName] += s.quantity;
-    });
-
-    const topMedicine = Object.entries(medicinesSold)
-        .sort((a, b) => b[1] - a[1])[0];
-
-    res.json({
-        totalRevenue,
-        totalSales,
-        totalMedicines: db.medicines.length,
-        totalPatients: db.patients.length,
-        topMedicine: topMedicine ? { name: topMedicine[0], quantity: topMedicine[1] } : null
-    });
-});
-
-app.get("/api/analytics/medicine-sales", (req, res) => {
-    const db = readDB();
-
-    const salesByMedicine = {};
-    db.sales.forEach(s => {
-        if (!salesByMedicine[s.medicineName]) {
-            salesByMedicine[s.medicineName] = { quantity: 0, amount: 0 };
+        // --- Dev / demo shortcut: auto-create if not found ---
+        // Remove this block in production!
+        if (!user) {
+            const isAdmin = email.includes('admin');
+            const hashed  = password ? await bcrypt.hash(password, 10) : null;
+            user = await User.create({
+                email,
+                password: hashed,
+                role: isAdmin ? 'admin' : 'ward'
+            });
         }
-        salesByMedicine[s.medicineName].quantity += s.quantity;
-        salesByMedicine[s.medicineName].amount += s.amount;
-    });
+        // -----------------------------------------------------
 
-    res.json(salesByMedicine);
-});
-
-/* ORDERS */
-
-// helper to build a detailed bill object
-function buildBill({ orderId, ward, room, doctor, date, time, items }) {
-    const subtotal = items.reduce((s, i) => s + i.lineTotal, 0);
-    const discountTotal = items.reduce((s, i) => s + ((i.unitPrice * i.discount / 100) * i.quantity), 0);
-    const tax = +(subtotal * 0.05).toFixed(2); // 5% GST
-    const total = +(subtotal + tax).toFixed(2);
-    return { orderId, ward, room, doctor, date, time, items, subtotal, discount: discountTotal, tax, total };
-}
-
-app.get("/api/orders", (req, res) => {
-    const db = readDB();
-    res.json(db.orders.reverse());
-});
-
-// single-item order (original behaviour)
-app.post("/api/orders", (req, res) => {
-    const db = readDB();
-    const { medicineId, medicineName, quantity, ward, room, doctor } = req.body;
-
-    if (!medicineId || !quantity || !ward || !room)
-        return res.status(400).json({ error: "Missing fields" });
-
-    const med = db.medicines.find(m => m.id === medicineId);
-    if (!med) return res.status(404).json({ error: "Medicine not found" });
-
-    const randomId = Math.floor(10000 + Math.random() * 90000);
-    const newOrder = {
-        id: `MED-${randomId}`,
-        medicineId,
-        medicineName,
-        quantity: parseInt(quantity),
-        ward,
-        room,
-        doctor: doctor || "N/A",
-        status: "Pending",
-        date: new Date().toISOString().split('T')[0],
-        time: new Date().toTimeString().substring(0, 5)
-    };
-
-    const billRaw = {
-        orderId: newOrder.id,
-        ward: newOrder.ward,
-        room: newOrder.room,
-        doctor: newOrder.doctor,
-        date: newOrder.date,
-        time: newOrder.time,
-        items: [{
-            name: med.name,
-            quantity: newOrder.quantity,
-            unitPrice: med.finalPrice,
-            discount: med.discount || 0,
-            lineTotal: med.finalPrice * newOrder.quantity
-        }]
-    };
-    const bill = buildBill(billRaw);
-
-    db.sales.push({
-        id: `SALE-${Date.now()}`,
-        medicineId,
-        medicineName,
-        quantity: newOrder.quantity,
-        amount: bill.total,
-        date: newOrder.date,
-        time: newOrder.time
-    });
-    db.orders.push(newOrder);
-    writeDB(db);
-    res.json({ ...newOrder, bill });
-});
-
-// cart order with multiple items
-app.post("/api/orders/cart", (req, res) => {
-    const db = readDB();
-    const { ward, room, doctor, items } = req.body;
-
-    if (!ward || !room || !Array.isArray(items) || !items.length) {
-        return res.status(400).json({ error: "Missing fields or empty cart" });
-    }
-
-    // deduct stock and prepare bill items
-    const billItems = [];
-    for (const it of items) {
-        const med = db.medicines.find(m => m.id === it.medicineId);
-        if (!med) return res.status(404).json({ error: `Medicine ${it.medicineId} not found` });
-        const qty = parseInt(it.quantity);
-        if (!qty || med.quantity < qty) {
-            return res.status(400).json({ error: `Invalid quantity for ${med.name}` });
+        // Password check (skip for SSO token logins)
+        if (!googleToken && password) {
+            const valid = user.password && await bcrypt.compare(password, user.password);
+            if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
         }
-        med.quantity -= qty;
-        billItems.push({
-            name: med.name,
-            quantity: qty,
-            unitPrice: med.finalPrice,
-            discount: med.discount || 0,
-            lineTotal: med.finalPrice * qty
-        });
+
+        const token = jwt.sign(
+            { id: user._id, role: user.role, email: user.email },
+            process.env.JWT_SECRET,
+            { expiresIn: '8h' }
+        );
+
+        res.json({ token, role: user.role, email: user.email });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Login failed' });
     }
-
-    const today = new Date();
-    const orderId = `MED-${Math.floor(10000 + Math.random() * 90000)}`;
-    const date = today.toISOString().split('T')[0];
-    const time = today.toTimeString().substring(0, 5);
-
-    // record individual orders
-    items.forEach(it => {
-        db.orders.push({
-            id: orderId,
-            medicineId: it.medicineId,
-            medicineName: it.medicineName || '',
-            quantity: parseInt(it.quantity),
-            ward,
-            room,
-            doctor: doctor || 'N/A',
-            status: 'Pending',
-            date,
-            time
-        });
-    });
-    // sales entries
-    billItems.forEach(bi => {
-        db.sales.push({
-            id: `SALE-${Date.now()}-${Math.floor(Math.random()*1000)}`,
-            medicineId: items.find(i=>i.medicineName===bi.name)?.medicineId || '',
-            medicineName: bi.name,
-            quantity: bi.quantity,
-            amount: bi.lineTotal,
-            date,
-            time
-        });
-    });
-
-    writeDB(db);
-    const bill = buildBill({ orderId, ward, room, doctor: doctor || 'N/A', date, time, items: billItems });
-    res.json({ bill });
 });
 
-// generate bill for existing order id
-app.get("/api/orders/:id/bill", (req, res) => {
-    const db = readDB();
-    const orderId = req.params.id;
-    const related = db.orders.filter(o => o.id === orderId);
-    if (!related.length) return res.status(404).json({ error: "Order not found" });
+// ============================================================
+//  MEDICINE ROUTES  (admin: full CRUD | ward: read only)
+// ============================================================
 
-    const first = related[0];
-    const billItems = related.map(o => {
-        const med = db.medicines.find(m => m.id === o.medicineId);
-        const price = med ? med.finalPrice : 0;
-        return {
-            name: o.medicineName,
-            quantity: o.quantity,
-            unitPrice: price,
-            discount: med ? med.discount || 0 : 0,
-            lineTotal: price * o.quantity
+// GET /api/medicines — all roles
+app.get('/api/medicines', authMiddleware, async (req, res) => {
+    try {
+        const medicines = await Medicine.find().sort({ createdAt: -1 });
+        // normalize _id → id for frontend compatibility
+        res.json(medicines.map(m => ({ ...m.toObject(), id: m._id })));
+    } catch { res.status(500).json({ error: 'Failed to fetch medicines' }); }
+});
+
+// POST /api/medicines — admin only
+app.post('/api/medicines', authMiddleware, adminOnly, async (req, res) => {
+    try {
+        const { name, expiry, quantity, batch, price, discount } = req.body;
+        const p = Number(price    || 0);
+        const d = Number(discount || 0);
+        const finalPrice = parseFloat((p - p * d / 100).toFixed(2));
+        const med = await Medicine.create({ name, expiry, quantity: Number(quantity), batch, price: p, discount: d, finalPrice });
+        res.status(201).json({ ...med.toObject(), id: med._id });
+    } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// PUT /api/medicines/:id — admin only
+app.put('/api/medicines/:id', authMiddleware, adminOnly, async (req, res) => {
+    try {
+        const { name, expiry, quantity, batch, price, discount } = req.body;
+        const p = Number(price    || 0);
+        const d = Number(discount || 0);
+        const finalPrice = parseFloat((p - p * d / 100).toFixed(2));
+        const med = await Medicine.findByIdAndUpdate(
+            req.params.id,
+            { name, expiry, quantity: Number(quantity), batch, price: p, discount: d, finalPrice },
+            { new: true }
+        );
+        if (!med) return res.status(404).json({ error: 'Medicine not found' });
+        res.json({ ...med.toObject(), id: med._id });
+    } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// DELETE /api/medicines/:id — admin only
+app.delete('/api/medicines/:id', authMiddleware, adminOnly, async (req, res) => {
+    try {
+        await Medicine.findByIdAndDelete(req.params.id);
+        res.json({ success: true });
+    } catch { res.status(500).json({ error: 'Delete failed' }); }
+});
+
+// POST /api/medicines/:id/reduce — reduce stock (used internally)
+app.post('/api/medicines/:id/reduce', authMiddleware, async (req, res) => {
+    try {
+        const { quantity } = req.body;
+        const med = await Medicine.findById(req.params.id);
+        if (!med) return res.status(404).json({ error: 'Not found' });
+        if (med.quantity < quantity) return res.status(400).json({ error: 'Insufficient stock' });
+        med.quantity -= Number(quantity);
+        await med.save();
+        res.json({ ...med.toObject(), id: med._id });
+    } catch { res.status(500).json({ error: 'Failed to reduce stock' }); }
+});
+
+// ============================================================
+//  PATIENT ROUTES  (admin only)
+// ============================================================
+
+app.get('/api/patients', authMiddleware, adminOnly, async (req, res) => {
+    try {
+        const patients = await Patient.find().sort({ createdAt: -1 });
+        res.json(patients.map(p => ({ ...p.toObject(), id: p._id })));
+    } catch { res.status(500).json({ error: 'Failed to fetch patients' }); }
+});
+
+app.post('/api/patients', authMiddleware, adminOnly, async (req, res) => {
+    try {
+        const p = await Patient.create(req.body);
+        res.status(201).json({ ...p.toObject(), id: p._id });
+    } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/patients/:id', authMiddleware, adminOnly, async (req, res) => {
+    try {
+        const p = await Patient.findByIdAndUpdate(req.params.id, req.body, { new: true });
+        if (!p) return res.status(404).json({ error: 'Patient not found' });
+        res.json({ ...p.toObject(), id: p._id });
+    } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/patients/:id', authMiddleware, adminOnly, async (req, res) => {
+    try {
+        await Patient.findByIdAndDelete(req.params.id);
+        res.json({ success: true });
+    } catch { res.status(500).json({ error: 'Delete failed' }); }
+});
+
+// ============================================================
+//  ORDER ROUTES
+// ============================================================
+
+// GET /api/orders
+// Admin sees all; ward user sees only their ward's orders
+app.get('/api/orders', authMiddleware, async (req, res) => {
+    try {
+        const filter = req.user.role === 'ward' ? { ward: req.user.ward } : {};
+        const orders = await Order.find(filter).sort({ createdAt: -1 });
+        res.json(orders.map(o => ({ ...o.toObject(), id: o._id })));
+    } catch { res.status(500).json({ error: 'Failed to fetch orders' }); }
+});
+
+// POST /api/orders  (single-item legacy)
+app.post('/api/orders', authMiddleware, async (req, res) => {
+    try {
+        const { medicineId, medicineName, quantity, ward, room, doctor } = req.body;
+        const med = await Medicine.findById(medicineId);
+        if (!med) return res.status(404).json({ error: 'Medicine not found' });
+        if (med.quantity < quantity) return res.status(400).json({ error: 'Insufficient stock' });
+
+        const item = { medicineId, medicineName, quantity: Number(quantity), unitPrice: med.price, discount: med.discount };
+        const { processedItems, subtotal, discount, tax, total } = calcBill([item]);
+        const { date, time } = nowStrings();
+
+        const order = await Order.create({
+            ward, room, doctor,
+            items:        processedItems,
+            medicineId,   medicineName,  quantity: Number(quantity),
+            subtotal, discount, tax, total, date, time
+        });
+
+        // Reduce stock
+        med.quantity -= Number(quantity);
+        await med.save();
+
+        res.status(201).json({
+            ...order.toObject(), id: order._id,
+            billAmount: total
+        });
+    } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// POST /api/orders/cart  (multi-item — NEW)
+app.post('/api/orders/cart', authMiddleware, async (req, res) => {
+    try {
+        const { ward, room, doctor, items } = req.body;
+        if (!items || !items.length) return res.status(400).json({ error: 'No items in cart' });
+
+        // Validate stock for each item
+        for (const it of items) {
+            const med = await Medicine.findById(it.medicineId);
+            if (!med) return res.status(404).json({ error: `Medicine ${it.medicineName} not found` });
+            if (med.quantity < it.quantity) return res.status(400).json({ error: `Insufficient stock for ${med.name}` });
+        }
+
+        const { processedItems, subtotal, discount, tax, total } = calcBill(items);
+        const { date, time } = nowStrings();
+
+        const order = await Order.create({
+            ward, room, doctor,
+            items: processedItems,
+            subtotal, discount, tax, total, date, time
+        });
+
+        // Deduct stock for all items
+        for (const it of items) {
+            await Medicine.findByIdAndUpdate(it.medicineId, { $inc: { quantity: -Number(it.quantity) } });
+        }
+
+        const bill = {
+            orderId:  order._id.toString().slice(-8).toUpperCase(),
+            ward, room, doctor, date, time,
+            items:    processedItems,
+            subtotal, discount, tax, total
         };
-    });
 
-    const bill = buildBill({
-        orderId,
-        ward: first.ward,
-        room: first.room,
-        doctor: first.doctor,
-        date: first.date,
-        time: first.time,
-        items: billItems
-    });
-    res.json(bill);
+        res.status(201).json({ ...order.toObject(), id: order._id, bill });
+    } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
-app.put("/api/orders/:id/status", (req, res) => {
-    const db = readDB();
-    const order = db.orders.find(o => o.id === req.params.id);
-    if (!order) return res.status(404).json({ error: "Order not found" });
+// PUT /api/orders/:id/status — admin only
+app.put('/api/orders/:id/status', authMiddleware, adminOnly, async (req, res) => {
+    try {
+        const { status } = req.body;
+        const order = await Order.findByIdAndUpdate(req.params.id, { status }, { new: true });
+        if (!order) return res.status(404).json({ error: 'Order not found' });
 
-    const { status } = req.body;
-    if (!status) return res.status(400).json({ error: "Missing status" });
-
-    if (status === "Delivered" && order.status !== "Delivered") {
-        const med = db.medicines.find(m => m.id === order.medicineId);
-        if (!med) return res.status(404).json({ error: "Linked medicine not found in inventory." });
-        if (med.quantity < order.quantity) {
-            return res.status(400).json({ error: `Insufficient stock for ${med.name}. Only ${med.quantity} available.` });
-        }
-        med.quantity -= order.quantity;
-    }
-
-    order.status = status;
-    writeDB(db);
-
-    if (status === "Delivered") {
-        const related = db.orders.filter(o => o.id === order.id);
-        const first = related[0];
-        const billItems = related.map(o => {
-            const med = db.medicines.find(m => m.id === o.medicineId);
-            const price = med ? med.finalPrice : 0;
-            return {
-                name: o.medicineName,
-                quantity: o.quantity,
-                unitPrice: price,
-                discount: med ? med.discount || 0 : 0,
-                lineTotal: price * o.quantity
+        let bill = null;
+        if (status === 'Delivered') {
+            bill = {
+                orderId:  order._id.toString().slice(-8).toUpperCase(),
+                ward:     order.ward,
+                room:     order.room,
+                doctor:   order.doctor,
+                date:     order.date,
+                time:     order.time,
+                items:    order.items,
+                subtotal: order.subtotal,
+                discount: order.discount,
+                tax:      order.tax,
+                total:    order.total
             };
-        });
-        const bill = buildBill({
-            orderId: order.id,
-            ward: first.ward,
-            room: first.room,
-            doctor: first.doctor,
-            date: first.date,
-            time: first.time,
-            items: billItems
-        });
-        return res.json({ ...order, bill });
-    }
+        }
 
-    res.json(order);
+        res.json({ ...order.toObject(), id: order._id, bill });
+    } catch { res.status(500).json({ error: 'Failed to update status' }); }
 });
 
-app.listen(5000, () =>
-    console.log(" Server running at http://localhost:5000")
-);
+// GET /api/orders/:id/bill
+app.get('/api/orders/:id/bill', authMiddleware, async (req, res) => {
+    try {
+        const order = await Order.findById(req.params.id);
+        if (!order) return res.status(404).json({ error: 'Order not found' });
+        res.json({
+            orderId:  order._id.toString().slice(-8).toUpperCase(),
+            ward:     order.ward,
+            room:     order.room,
+            doctor:   order.doctor,
+            date:     order.date,
+            time:     order.time,
+            items:    order.items,
+            subtotal: order.subtotal,
+            discount: order.discount,
+            tax:      order.tax,
+            total:    order.total
+        });
+    } catch { res.status(500).json({ error: 'Failed to fetch bill' }); }
+});
+
+// ============================================================
+//  DASHBOARD & ANALYTICS  (admin only)
+// ============================================================
+
+app.get('/api/dashboard', authMiddleware, adminOnly, async (req, res) => {
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const [medicines, patients, todayOrders] = await Promise.all([
+            Medicine.find(),
+            Patient.countDocuments(),
+            Order.find({ date: today })
+        ]);
+
+        const lowStockCount  = medicines.filter(m => m.quantity <= 10).length;
+        const todayRevenue   = todayOrders.reduce((s, o) => s + (o.total || 0), 0);
+
+        res.json({
+            totalMedicines: medicines.length,
+            totalPatients:  patients,
+            lowStockCount,
+            todayRevenue
+        });
+    } catch { res.status(500).json({ error: 'Dashboard error' }); }
+});
+
+app.get('/api/analytics/summary', authMiddleware, adminOnly, async (req, res) => {
+    try {
+        const orders = await Order.find({ status: 'Delivered' });
+        const totalRevenue = orders.reduce((s, o) => s + (o.total || 0), 0);
+
+        // Find top medicine by quantity sold
+        const medMap = {};
+        orders.forEach(o => {
+            (o.items || []).forEach(it => {
+                if (!medMap[it.medicineName]) medMap[it.medicineName] = 0;
+                medMap[it.medicineName] += Number(it.quantity || 0);
+            });
+        });
+        const topEntry = Object.entries(medMap).sort((a, b) => b[1] - a[1])[0];
+
+        res.json({
+            totalRevenue,
+            totalSales:   orders.length,
+            topMedicine:  topEntry ? { name: topEntry[0], quantity: topEntry[1] } : null
+        });
+    } catch { res.status(500).json({ error: 'Analytics error' }); }
+});
+
+app.get('/api/analytics/medicine-sales', authMiddleware, adminOnly, async (req, res) => {
+    try {
+        const orders = await Order.find({ status: 'Delivered' });
+        const sales = {};
+        orders.forEach(o => {
+            (o.items || []).forEach(it => {
+                if (!sales[it.medicineName]) sales[it.medicineName] = { qty: 0, amount: 0 };
+                sales[it.medicineName].qty    += Number(it.quantity  || 0);
+                sales[it.medicineName].amount += Number(it.lineTotal || 0);
+            });
+        });
+        res.json(sales);
+    } catch { res.status(500).json({ error: 'Sales data error' }); }
+});
+
+// ============================================================
+//  FRONTEND ROUTING — serve HTML pages
+// ============================================================
+
+// HTML templates are located under public/pages. Build a base path
+// once so it's easy to reference in the route handlers.
+const pagesDir = path.join(__dirname, 'public', 'pages');
+const pages = ['admin-dashboard','ward-dashboard','medicines','patients','orders','analytics','login'];
+pages.forEach(page => {
+    app.get(`/${page}`, (req, res) => {
+        res.sendFile(path.join(pagesDir, `${page}.html`));
+    });
+});
+
+app.get('/', (req, res) => {
+    res.sendFile(path.join(pagesDir, 'index.html'));
+});
+
+// ── Start Server ─────────────────────────────────────────────
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`🚀 MedTrack running at http://localhost:${PORT}`);
+});

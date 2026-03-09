@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medicines | MedTrack</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+
+<body>
+    <div class="app-layout">
+        <div id="sidebar-container"></div>
+        <div class="main-wrapper">
+            <div id="topbar-container"></div>
+
+            <div class="page-container" id="page-content">
+                <div class="page">
+                    <div class="page-header">
+                        <div>
+                            <h1>Pharmacy Catalog</h1>
+                            <p>Manage in-stock medicines, track expiration dates, and fulfill requests.</p>
+                        </div>
+                        <div id="admin-actions" class="hidden">
+                            <button class="btn btn-primary btn-glow" onclick="openMedPanel()"><i data-lucide="plus"></i>
+                                Add Medicine</button>
+                        </div>
+                    </div>
+
+                    <div class="slide-panel hidden" id="med-panel">
+                        <div class="panel-body">
+                            <h3 id="med-panel-title">Add New Medicine</h3>
+                            <input type="hidden" id="m_id" value="">
+                            <div class="form-grid">
+                                <div class="form-group"><label>Medicine Name *</label><input type="text" id="m_name"
+                                        placeholder="e.g. Paracetamol"></div>
+                                <div class="form-group"><label>Expiry Date *</label><input type="date" id="m_exp"></div>
+                                <div class="form-group"><label>Quantity *</label><input type="number" id="m_qty"
+                                        value="1"></div>
+                                <div class="form-group"><label>Batch Number</label><input type="text" id="m_batch"
+                                        placeholder="B-1002"></div>
+                                <div class="form-group"><label>Price (₹)</label><input type="number" id="m_price"
+                                        value="0"></div>
+                                <div class="form-group"><label>Discount (%)</label><input type="number" id="m_disc"
+                                        value="0"></div>
+                            </div>
+                            <div class="form-actions right">
+                                <button class="btn btn-outline" onclick="closeMedPanel()">Cancel</button>
+                                <button class="btn btn-primary" onclick="submitMed()">Save Medicine</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="table-card">
+                        <div class="filter-toolbar" style="padding: 24px;">
+                            <div class="search-box">
+                                <i data-lucide="search"></i>
+                                <input type="text" id="search-input" placeholder="Search by medicine name or batch...">
+                            </div>
+                        </div>
+                        <div style="overflow-x:auto;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name & Details</th>
+                                        <th>Batch</th>
+                                        <th>Expiry</th>
+                                        <th>Stock</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="table-body">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script type="module" src="/js/medicines.js"></script>
+    <script>
+        window.openMedPanel = () => { };
+        window.closeMedPanel = () => { };
+        window.submitMed = () => { };
+        window.deleteMed = () => { };
+        window.reqSupply = () => { };
+        window.editMed = () => { };
+    </script>
+</body>
+
+</html>

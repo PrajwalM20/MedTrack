@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard | MedTrack</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <div class="app-layout">
+        <!-- Injected via JS -->
+        <div id="sidebar-container"></div>
+
+        <div class="main-wrapper">
+            <div id="topbar-container"></div>
+
+            <div class="page-container" id="page-content">
+                <div class="page" id="dashboard-page">
+                    <div class="page-header">
+                        <div>
+                            <h1>Overview</h1>
+                            <p>Welcome back! Here's what's happening today.</p>
+                        </div>
+                    </div>
+
+                    <div class="metric-grid">
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <span class="title">Total Revenue</span>
+                                <div class="icon revenue-icon"><i data-lucide="indian-rupee"></i></div>
+                            </div>
+                            <div class="metric-body">
+                                <span class="value" id="val-revenue">₹0.00</span>
+                                <span class="trend positive"><i data-lucide="trending-up"></i> Live Tracking</span>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <span class="title">Total Medicines</span>
+                                <div class="icon meds-icon"><i data-lucide="pill"></i></div>
+                            </div>
+                            <div class="metric-body">
+                                <span class="value" id="val-medicines">0</span>
+                                <span class="trend neutral">In stock inventory</span>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <span class="title">Total Patients</span>
+                                <div class="icon patients-icon"><i data-lucide="users"></i></div>
+                            </div>
+                            <div class="metric-body">
+                                <span class="value" id="val-patients">0</span>
+                                <span class="trend positive">Active</span>
+                            </div>
+                        </div>
+
+                        <div class="metric-card warning-card">
+                            <div class="metric-header">
+                                <span class="title">Critical Alerts</span>
+                                <div class="icon alert-icon"><i data-lucide="alert-triangle"></i></div>
+                            </div>
+                            <div class="metric-body">
+                                <span class="value text-danger" id="val-alerts">0</span>
+                                <span class="trend negative">Low stock items</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-grid-2">
+                        <div class="dashboard-panel">
+                            <div class="panel-header">
+                                <h3>Revenue Overview</h3>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="revenueChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="dashboard-panel">
+                            <div class="panel-header">
+                                <h3>Quick Actions</h3>
+                            </div>
+                            <div class="alerts-container">
+                                <a href="/orders" class="btn btn-outline btn-block mb-4"><i
+                                        data-lucide="clipboard-list"></i> View Pending Orders</a>
+                                <a href="/medicines" class="btn btn-primary btn-block"><i data-lucide="plus"></i> Manage
+                                    Inventory</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Controller Setup -->
+    <script type="module" src="/js/dashboard.js"></script>
+</body>
+
+</html>

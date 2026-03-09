@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics | MedTrack</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <div class="app-layout">
+        <div id="sidebar-container"></div>
+        <div class="main-wrapper">
+            <div id="topbar-container"></div>
+
+            <div class="page-container" id="page-content">
+                <div class="page">
+                    <div class="page-header">
+                        <div>
+                            <h1>Sales & Analytics</h1>
+                            <p>Deep dive into pharmacy revenue streams, top-selling medicines, and distribution charts.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="metric-grid">
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <span class="title">Lifetime Revenue</span>
+                                <div class="icon revenue-icon"><i data-lucide="indian-rupee"></i></div>
+                            </div>
+                            <div class="metric-body">
+                                <span class="value" id="val-revenue">₹0.00</span>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <span class="title">Total POS Transactions</span>
+                                <div class="icon" style="background:var(--color-ice); color:var(--text-main)"><i
+                                        data-lucide="file-text"></i></div>
+                            </div>
+                            <div class="metric-body">
+                                <span class="value" id="val-sales">0</span>
+                            </div>
+                        </div>
+
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <span class="title">Top Selling Medicine</span>
+                                <div class="icon meds-icon"><i data-lucide="star"></i></div>
+                            </div>
+                            <div class="metric-body">
+                                <span class="value" id="val-topmed" style="font-size:1.5rem">Loading...</span>
+                                <span class="trend positive" id="val-topmed-qty">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-panel mt-4">
+                        <div class="panel-header">
+                            <h3>Revenue by Medicine</h3>
+                        </div>
+                        <div class="chart-container" style="height:400px">
+                            <canvas id="analyticsChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script type="module" src="/js/analytics.js"></script>
+</body>
+
+</html>

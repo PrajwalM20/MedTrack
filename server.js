@@ -6,21 +6,49 @@ const app = express();
 app.use(express.json());
 app.use(express.static("public"));
 
+// Page Routes
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public/pages/index.html')));
+app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public/pages/login.html')));
+app.get('/admin-dashboard', (req, res) => res.sendFile(path.join(__dirname, 'public/pages/admin-dashboard.html')));
+app.get('/ward-dashboard', (req, res) => res.sendFile(path.join(__dirname, 'public/pages/ward-dashboard.html')));
+app.get('/medicines', (req, res) => res.sendFile(path.join(__dirname, 'public/pages/medicines.html')));
+app.get('/patients', (req, res) => res.sendFile(path.join(__dirname, 'public/pages/patients.html')));
+app.get('/orders', (req, res) => res.sendFile(path.join(__dirname, 'public/pages/orders.html')));
+app.get('/analytics', (req, res) => res.sendFile(path.join(__dirname, 'public/pages/analytics.html')));
+
 const DATA_FILE = path.join(__dirname, "data.json");
 
 /* DATABASE */
 function readDB() {
     if (!fs.existsSync(DATA_FILE)) {
-        const initial = { medicines: [], patients: [], sales: [], assignments: [] };
+        const initial = { medicines: [], patients: [], sales: [], assignments: [], orders: [] };
         fs.writeFileSync(DATA_FILE, JSON.stringify(initial, null, 2));
         return initial;
     }
-    return JSON.parse(fs.readFileSync(DATA_FILE));
+    const db = JSON.parse(fs.readFileSync(DATA_FILE));
+    if (!db.orders) db.orders = [];
+    return db;
 }
 
 function writeDB(data) {
     fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
+
+/* AUTHENTICATION */
+app.post("/api/login", (req, res) => {
+    const { email, password, googleToken } = req.body;
+
+    // Simulate google login or email login
+    if (googleToken || (email && password)) {
+        const e = email || "google-user@example.com";
+        // If the email includes 'admin', treat as admin, else ward
+        const role = e.toLowerCase().includes("admin") ? "admin" : "ward";
+        const token = "mock-token-" + Date.now();
+        res.json({ token, role, email: e });
+    } else {
+        res.status(401).json({ error: "Invalid credentials" });
+    }
+});
 
 /* MEDICINES */
 
@@ -184,7 +212,7 @@ app.get("/api/dashboard", (req, res) => {
     const totalMedicines = db.medicines.length;
     const totalPatients = db.patients.length;
     const lowStockCount = db.medicines.filter(m => m.quantity <= 10).length;
-    
+
     const today = new Date().toISOString().split('T')[0];
     const todaySales = db.sales.filter(s => s.date === today);
     const todayRevenue = todaySales.reduce((sum, s) => sum + s.amount, 0);
@@ -242,16 +270,16 @@ app.get("/api/sales/daily-revenue", (req, res) => {
 
 app.get("/api/analytics/summary", (req, res) => {
     const db = readDB();
-    
+
     const totalRevenue = db.sales.reduce((sum, s) => sum + s.amount, 0);
     const totalSales = db.sales.length;
-    
+
     const medicinesSold = {};
     db.sales.forEach(s => {
         if (!medicinesSold[s.medicineName]) medicinesSold[s.medicineName] = 0;
         medicinesSold[s.medicineName] += s.quantity;
     });
-    
+
     const topMedicine = Object.entries(medicinesSold)
         .sort((a, b) => b[1] - a[1])[0];
 
@@ -266,7 +294,7 @@ app.get("/api/analytics/summary", (req, res) => {
 
 app.get("/api/analytics/medicine-sales", (req, res) => {
     const db = readDB();
-    
+
     const salesByMedicine = {};
     db.sales.forEach(s => {
         if (!salesByMedicine[s.medicineName]) {
@@ -277,6 +305,83 @@ app.get("/api/analytics/medicine-sales", (req, res) => {
     });
 
     res.json(salesByMedicine);
+});
+
+/* ORDERS */
+
+app.get("/api/orders", (req, res) => {
+    const db = readDB();
+    res.json(db.orders.reverse());
+});
+
+app.post("/api/orders", (req, res) => {
+    const db = readDB();
+    const { medicineId, medicineName, quantity, ward, room, doctor } = req.body;
+
+    if (!medicineId || !quantity || !ward || !room)
+        return res.status(400).json({ error: "Missing fields" });
+
+    const med = db.medicines.find(m => m.id === medicineId);
+    if (!med) return res.status(404).json({ error: "Medicine not found" });
+
+    // Generate MED-XXXXX order ID
+    const randomId = Math.floor(10000 + Math.random() * 90000);
+
+    const newOrder = {
+        id: `MED-${randomId}`,
+        medicineId,
+        medicineName,
+        quantity: parseInt(quantity),
+        ward,
+        room,
+        doctor: doctor || "N/A",
+        status: "Pending",
+        date: new Date().toISOString().split('T')[0],
+        time: new Date().toTimeString().substring(0, 5) // HH:MM
+    };
+
+    const billAmount = med.finalPrice * newOrder.quantity;
+    const newBill = {
+        id: `BILL-${Date.now()}`,
+        medicineId,
+        medicineName,
+        quantity: newOrder.quantity,
+        amount: parseFloat(billAmount),
+        date: newOrder.date,
+        time: newOrder.time
+    };
+
+    db.sales.push(newBill);
+    db.orders.push(newOrder);
+    writeDB(db);
+    res.json({ ...newOrder, billAmount });
+});
+
+app.put("/api/orders/:id/status", (req, res) => {
+    const db = readDB();
+    const order = db.orders.find(o => o.id === req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    const { status } = req.body;
+    if (!status) return res.status(400).json({ error: "Missing status" });
+
+    // If changing to delivered
+    if (status === "Delivered" && order.status !== "Delivered") {
+        const med = db.medicines.find(m => m.id === order.medicineId);
+        if (!med) return res.status(404).json({ error: "Linked medicine not found in inventory." });
+
+        if (med.quantity < order.quantity) {
+            return res.status(400).json({ error: `Insufficient stock for ${med.name}. Only ${med.quantity} available.` });
+        }
+
+        med.quantity -= order.quantity;
+    }
+
+    // Optionally handle reverse status changes if needed, but typically standard flow is pending -> processing -> delivered
+
+    order.status = status;
+    writeDB(db);
+    res.json(order);
 });
 
 app.listen(5000, () =>

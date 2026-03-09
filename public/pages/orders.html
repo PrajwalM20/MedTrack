@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orders | MedTrack</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+
+<body>
+    <div class="app-layout">
+        <div id="sidebar-container"></div>
+        <div class="main-wrapper">
+            <div id="topbar-container"></div>
+
+            <div class="page-container" id="page-content">
+                <div class="page">
+                    <div class="page-header">
+                        <div>
+                            <h1>Ward Orders</h1>
+                            <p>Track, manage, and fulfill medicine supply requests from integrated hospital wards.</p>
+                        </div>
+                    </div>
+
+                    <div class="table-card">
+                        <div class="filter-toolbar" style="padding: 24px;">
+                            <div class="search-box">
+                                <i data-lucide="search"></i>
+                                <input type="text" id="search-input" placeholder="Search by Order ID or Ward Name...">
+                            </div>
+                        </div>
+                        <div style="overflow-x:auto;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Order Info</th>
+                                        <th>Medicine</th>
+                                        <th>Quantity</th>
+                                        <th>Destination</th>
+                                        <th>Status</th>
+                                        <th class="text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="table-body">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script type="module" src="/js/orders.js"></script>
+    <script>
+        window.updateStatus = () => { };
+    </script>
+</body>
+
+</html>

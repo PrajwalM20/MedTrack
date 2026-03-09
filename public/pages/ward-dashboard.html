@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ward Dashboard | MedTrack</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+
+<body>
+    <div class="app-layout">
+        <div id="sidebar-container"></div>
+        <div class="main-wrapper">
+            <div id="topbar-container"></div>
+
+            <div class="page-container" id="page-content">
+                <div class="page" id="dashboard-page">
+                    <div class="page-header">
+                        <div>
+                            <h1>Ward Overview</h1>
+                            <p>Manage your ward's internal supply requests and live delivery tracking.</p>
+                        </div>
+                    </div>
+
+                    <div class="metric-grid">
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <span class="title">Total Requests</span>
+                                <div class="icon patients-icon"><i data-lucide="clipboard-list"></i></div>
+                            </div>
+                            <div class="metric-body">
+                                <span class="value" id="val-total">0</span>
+                                <span class="trend neutral">Lifetime requests placed</span>
+                            </div>
+                        </div>
+
+                        <div class="metric-card warning-card">
+                            <div class="metric-header">
+                                <span class="title">Pending Delivery</span>
+                                <div class="icon alert-icon"><i data-lucide="clock"></i></div>
+                            </div>
+                            <div class="metric-body">
+                                <span class="value text-warning" id="val-pending">0</span>
+                                <span class="trend negative">Awaiting pharmacy fulfillment</span>
+                            </div>
+                        </div>
+
+                        <div class="metric-card"
+                            style="border-color: #D1FAE5; background: linear-gradient(145deg, #ffffff 0%, #F0FDF4 100%);">
+                            <div class="metric-header">
+                                <span class="title">Successfully Delivered</span>
+                                <div class="icon" style="background:var(--color-emerald)"><i data-lucide="check-circle"
+                                        style="color:white"></i></div>
+                            </div>
+                            <div class="metric-body">
+                                <span class="value" style="color:var(--color-emerald)" id="val-delivered">0</span>
+                                <span class="trend positive">Inventory received</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-panel">
+                        <div class="panel-header">
+                            <h3>Quick Actions</h3>
+                        </div>
+                        <div class="alerts-container">
+                            <a href="/medicines" class="btn btn-primary btn-block mb-4 btn-large"><i
+                                    data-lucide="search"></i> Browse Pharmacy Catalog</a>
+                            <a href="/orders" class="btn btn-outline btn-block"><i data-lucide="list"></i> My Order
+                                History</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script type="module" src="/js/dashboard.js"></script>
+</body>
+
+</html>

@@ -4,31 +4,31 @@
       "id": "1771956507336",
       "name": "Paracetamol",
       "expiry": "2026-12-31",
-      "quantity": 7,
+      "quantity": 6,
       "batch": "B1",
       "price": 50,
       "discount": 10,
       "finalPrice": 45
     },
     {
-      "id": "1772085418461",
-      "name": "gg",
-      "expiry": "2026-02-26",
-      "quantity": 23,
-      "batch": "122",
-      "price": 1123,
-      "discount": 2,
-      "finalPrice": 1100.54
-    },
-    {
       "id": "1772089911799",
-      "name": "dolo",
+      "name": "Vomikind",
       "expiry": "2029-06-02",
       "quantity": 89,
       "batch": "A001",
       "price": 125,
       "discount": 9,
       "finalPrice": 113.75
+    },
+    {
+      "id": "1772988454160",
+      "name": "Dolo-650",
+      "expiry": "2028-11-09",
+      "quantity": 100,
+      "batch": "B002",
+      "price": 10,
+      "discount": 1,
+      "finalPrice": 9.9
     }
   ],
   "patients": [
@@ -51,7 +51,7 @@
     },
     {
       "id": "1772030393169",
-      "name": "Test User",
+      "name": "Shilpa",
       "age": 45,
       "gender": "F",
       "disease": "Cold",
@@ -60,14 +60,134 @@
     },
     {
       "id": "1772090003758",
-      "name": "gg",
+      "name": "Savitha",
       "age": 18,
       "gender": "F",
       "disease": "general",
       "nextRecheck": null,
       "medicines": []
+    },
+    {
+      "id": "1772984638905",
+      "name": "Rajesh",
+      "age": 33,
+      "gender": "Male",
+      "disease": "Jaundice",
+      "nextRecheck": "2026-04-02",
+      "medicines": []
     }
   ],
-  "sales": [],
-  "assignments": []
+  "sales": [
+    {
+      "id": "1772984167281",
+      "medicineId": "1771956507336",
+      "medicineName": "Paracetamol",
+      "quantity": 1,
+      "amount": 45,
+      "date": "2026-03-08",
+      "time": "21:06:07"
+    },
+    {
+      "id": "1772984444482",
+      "medicineId": "1772085418461",
+      "medicineName": "gg",
+      "quantity": 1,
+      "amount": 1100.54,
+      "date": "2026-03-08",
+      "time": "21:10:44"
+    },
+    {
+      "id": "BILL-1773031685374",
+      "medicineId": "1771956507336",
+      "medicineName": "Paracetamol",
+      "quantity": 4,
+      "amount": 180,
+      "date": "2026-03-09",
+      "time": "10:18"
+    },
+    {
+      "id": "BILL-1773031798991",
+      "medicineId": "1771956507336",
+      "medicineName": "Paracetamol",
+      "quantity": 80,
+      "amount": 3600,
+      "date": "2026-03-09",
+      "time": "10:19"
+    }
+  ],
+  "assignments": [],
+  "orders": [
+    {
+      "id": "MED-56764",
+      "medicineId": "1771956507336",
+      "medicineName": "Paracetamol",
+      "quantity": 12,
+      "ward": "ICU WardICU",
+      "room": "101",
+      "doctor": "Dr. Smith",
+      "status": "Delivered",
+      "date": "2026-03-08",
+      "time": "21:27"
+    },
+    {
+      "id": "MED-74376",
+      "medicineId": "1771956507336",
+      "medicineName": "Paracetamol",
+      "quantity": 2,
+      "ward": "Shilpa",
+      "room": "30",
+      "doctor": "Ward User",
+      "status": "Delivered",
+      "date": "2026-03-08",
+      "time": "21:50"
+    },
+    {
+      "id": "MED-93935",
+      "medicineId": "1771956507336",
+      "medicineName": "Paracetamol",
+      "quantity": 2,
+      "ward": "shilpa",
+      "room": "43",
+      "doctor": "Ward User",
+      "status": "Delivered",
+      "date": "2026-03-08",
+      "time": "22:06"
+    },
+    {
+      "id": "MED-45625",
+      "medicineId": "1772089911799",
+      "medicineName": "Vomikind",
+      "quantity": 2,
+      "ward": "rohit",
+      "room": "2",
+      "doctor": "Ward User",
+      "status": "Delivered",
+      "date": "2026-03-08",
+      "time": "22:12"
+    },
+    {
+      "id": "MED-16761",
+      "medicineId": "1771956507336",
+      "medicineName": "Paracetamol",
+      "quantity": 4,
+      "ward": "Savitha",
+      "room": "67",
+      "doctor": "Ward User",
+      "status": "Delivered",
+      "date": "2026-03-09",
+      "time": "10:18"
+    },
+    {
+      "id": "MED-52679",
+      "medicineId": "1771956507336",
+      "medicineName": "Paracetamol",
+      "quantity": 80,
+      "ward": "xyz",
+      "room": "44",
+      "doctor": "Ward User",
+      "status": "Delivered",
+      "date": "2026-03-09",
+      "time": "10:19"
+    }
+  ]
 }

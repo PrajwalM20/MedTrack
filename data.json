@@ -14,7 +14,7 @@
       "id": "1772089911799",
       "name": "Vomikind",
       "expiry": "2029-06-02",
-      "quantity": 89,
+      "quantity": 80,
       "batch": "A001",
       "price": 125,
       "discount": 9,
@@ -24,7 +24,7 @@
       "id": "1772988454160",
       "name": "Dolo-650",
       "expiry": "2028-11-09",
-      "quantity": 100,
+      "quantity": 89,
       "batch": "B002",
       "price": 10,
       "discount": 1,
@@ -36,9 +36,9 @@
       "id": "1771956596138",
       "name": "John Doe",
       "age": 30,
-      "gender": "M",
+      "gender": "Male",
       "disease": "Fever",
-      "nextRecheck": null,
+      "nextRecheck": "2026-03-10",
       "medicines": [
         {
           "id": "1771956610280",
@@ -53,7 +53,7 @@
       "id": "1772030393169",
       "name": "Shilpa",
       "age": 45,
-      "gender": "F",
+      "gender": "Female",
       "disease": "Cold",
       "nextRecheck": null,
       "medicines": []
@@ -113,6 +113,42 @@
       "amount": 3600,
       "date": "2026-03-09",
       "time": "10:19"
+    },
+    {
+      "id": "SALE-1773047809146-187",
+      "medicineId": "1772988454160",
+      "medicineName": "Dolo-650",
+      "quantity": 5,
+      "amount": 49.5,
+      "date": "2026-03-09",
+      "time": "14:46"
+    },
+    {
+      "id": "SALE-1773047809146-199",
+      "medicineId": "1772089911799",
+      "medicineName": "Vomikind",
+      "quantity": 5,
+      "amount": 568.75,
+      "date": "2026-03-09",
+      "time": "14:46"
+    },
+    {
+      "id": "SALE-1773047901898-450",
+      "medicineId": "1772988454160",
+      "medicineName": "Dolo-650",
+      "quantity": 3,
+      "amount": 29.700000000000003,
+      "date": "2026-03-09",
+      "time": "14:48"
+    },
+    {
+      "id": "SALE-1773047901898-389",
+      "medicineId": "1772089911799",
+      "medicineName": "Vomikind",
+      "quantity": 4,
+      "amount": 455,
+      "date": "2026-03-09",
+      "time": "14:48"
     }
   ],
   "assignments": [],
@@ -188,6 +224,54 @@
       "status": "Delivered",
       "date": "2026-03-09",
       "time": "10:19"
+    },
+    {
+      "id": "MED-59771",
+      "medicineId": "1772988454160",
+      "medicineName": "Dolo-650",
+      "quantity": 5,
+      "ward": "general",
+      "room": "202,44",
+      "doctor": "Dr sushma",
+      "status": "Pending",
+      "date": "2026-03-09",
+      "time": "14:46"
+    },
+    {
+      "id": "MED-59771",
+      "medicineId": "1772089911799",
+      "medicineName": "Vomikind",
+      "quantity": 5,
+      "ward": "general",
+      "room": "202,44",
+      "doctor": "Dr sushma",
+      "status": "Pending",
+      "date": "2026-03-09",
+      "time": "14:46"
+    },
+    {
+      "id": "MED-36117",
+      "medicineId": "1772988454160",
+      "medicineName": "Dolo-650",
+      "quantity": 3,
+      "ward": "general",
+      "room": "202,44",
+      "doctor": "Dr sushma",
+      "status": "Delivered",
+      "date": "2026-03-09",
+      "time": "14:48"
+    },
+    {
+      "id": "MED-36117",
+      "medicineId": "1772089911799",
+      "medicineName": "Vomikind",
+      "quantity": 4,
+      "ward": "general",
+      "room": "202,44",
+      "doctor": "Dr sushma",
+      "status": "Pending",
+      "date": "2026-03-09",
+      "time": "14:48"
     }
   ]
 }

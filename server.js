@@ -309,11 +309,21 @@ app.get("/api/analytics/medicine-sales", (req, res) => {
 
 /* ORDERS */
 
+// helper to build a detailed bill object
+function buildBill({ orderId, ward, room, doctor, date, time, items }) {
+    const subtotal = items.reduce((s, i) => s + i.lineTotal, 0);
+    const discountTotal = items.reduce((s, i) => s + ((i.unitPrice * i.discount / 100) * i.quantity), 0);
+    const tax = +(subtotal * 0.05).toFixed(2); // 5% GST
+    const total = +(subtotal + tax).toFixed(2);
+    return { orderId, ward, room, doctor, date, time, items, subtotal, discount: discountTotal, tax, total };
+}
+
 app.get("/api/orders", (req, res) => {
     const db = readDB();
     res.json(db.orders.reverse());
 });
 
+// single-item order (original behaviour)
 app.post("/api/orders", (req, res) => {
     const db = readDB();
     const { medicineId, medicineName, quantity, ward, room, doctor } = req.body;
@@ -324,9 +334,7 @@ app.post("/api/orders", (req, res) => {
     const med = db.medicines.find(m => m.id === medicineId);
     if (!med) return res.status(404).json({ error: "Medicine not found" });
 
-    // Generate MED-XXXXX order ID
     const randomId = Math.floor(10000 + Math.random() * 90000);
-
     const newOrder = {
         id: `MED-${randomId}`,
         medicineId,
@@ -337,24 +345,136 @@ app.post("/api/orders", (req, res) => {
         doctor: doctor || "N/A",
         status: "Pending",
         date: new Date().toISOString().split('T')[0],
-        time: new Date().toTimeString().substring(0, 5) // HH:MM
+        time: new Date().toTimeString().substring(0, 5)
     };
 
-    const billAmount = med.finalPrice * newOrder.quantity;
-    const newBill = {
-        id: `BILL-${Date.now()}`,
+    const billRaw = {
+        orderId: newOrder.id,
+        ward: newOrder.ward,
+        room: newOrder.room,
+        doctor: newOrder.doctor,
+        date: newOrder.date,
+        time: newOrder.time,
+        items: [{
+            name: med.name,
+            quantity: newOrder.quantity,
+            unitPrice: med.finalPrice,
+            discount: med.discount || 0,
+            lineTotal: med.finalPrice * newOrder.quantity
+        }]
+    };
+    const bill = buildBill(billRaw);
+
+    db.sales.push({
+        id: `SALE-${Date.now()}`,
         medicineId,
         medicineName,
         quantity: newOrder.quantity,
-        amount: parseFloat(billAmount),
+        amount: bill.total,
         date: newOrder.date,
         time: newOrder.time
-    };
-
-    db.sales.push(newBill);
+    });
     db.orders.push(newOrder);
     writeDB(db);
-    res.json({ ...newOrder, billAmount });
+    res.json({ ...newOrder, bill });
+});
+
+// cart order with multiple items
+app.post("/api/orders/cart", (req, res) => {
+    const db = readDB();
+    const { ward, room, doctor, items } = req.body;
+
+    if (!ward || !room || !Array.isArray(items) || !items.length) {
+        return res.status(400).json({ error: "Missing fields or empty cart" });
+    }
+
+    // deduct stock and prepare bill items
+    const billItems = [];
+    for (const it of items) {
+        const med = db.medicines.find(m => m.id === it.medicineId);
+        if (!med) return res.status(404).json({ error: `Medicine ${it.medicineId} not found` });
+        const qty = parseInt(it.quantity);
+        if (!qty || med.quantity < qty) {
+            return res.status(400).json({ error: `Invalid quantity for ${med.name}` });
+        }
+        med.quantity -= qty;
+        billItems.push({
+            name: med.name,
+            quantity: qty,
+            unitPrice: med.finalPrice,
+            discount: med.discount || 0,
+            lineTotal: med.finalPrice * qty
+        });
+    }
+
+    const today = new Date();
+    const orderId = `MED-${Math.floor(10000 + Math.random() * 90000)}`;
+    const date = today.toISOString().split('T')[0];
+    const time = today.toTimeString().substring(0, 5);
+
+    // record individual orders
+    items.forEach(it => {
+        db.orders.push({
+            id: orderId,
+            medicineId: it.medicineId,
+            medicineName: it.medicineName || '',
+            quantity: parseInt(it.quantity),
+            ward,
+            room,
+            doctor: doctor || 'N/A',
+            status: 'Pending',
+            date,
+            time
+        });
+    });
+    // sales entries
+    billItems.forEach(bi => {
+        db.sales.push({
+            id: `SALE-${Date.now()}-${Math.floor(Math.random()*1000)}`,
+            medicineId: items.find(i=>i.medicineName===bi.name)?.medicineId || '',
+            medicineName: bi.name,
+            quantity: bi.quantity,
+            amount: bi.lineTotal,
+            date,
+            time
+        });
+    });
+
+    writeDB(db);
+    const bill = buildBill({ orderId, ward, room, doctor: doctor || 'N/A', date, time, items: billItems });
+    res.json({ bill });
+});
+
+// generate bill for existing order id
+app.get("/api/orders/:id/bill", (req, res) => {
+    const db = readDB();
+    const orderId = req.params.id;
+    const related = db.orders.filter(o => o.id === orderId);
+    if (!related.length) return res.status(404).json({ error: "Order not found" });
+
+    const first = related[0];
+    const billItems = related.map(o => {
+        const med = db.medicines.find(m => m.id === o.medicineId);
+        const price = med ? med.finalPrice : 0;
+        return {
+            name: o.medicineName,
+            quantity: o.quantity,
+            unitPrice: price,
+            discount: med ? med.discount || 0 : 0,
+            lineTotal: price * o.quantity
+        };
+    });
+
+    const bill = buildBill({
+        orderId,
+        ward: first.ward,
+        room: first.room,
+        doctor: first.doctor,
+        date: first.date,
+        time: first.time,
+        items: billItems
+    });
+    res.json(bill);
 });
 
 app.put("/api/orders/:id/status", (req, res) => {
@@ -365,22 +485,44 @@ app.put("/api/orders/:id/status", (req, res) => {
     const { status } = req.body;
     if (!status) return res.status(400).json({ error: "Missing status" });
 
-    // If changing to delivered
     if (status === "Delivered" && order.status !== "Delivered") {
         const med = db.medicines.find(m => m.id === order.medicineId);
         if (!med) return res.status(404).json({ error: "Linked medicine not found in inventory." });
-
         if (med.quantity < order.quantity) {
             return res.status(400).json({ error: `Insufficient stock for ${med.name}. Only ${med.quantity} available.` });
         }
-
         med.quantity -= order.quantity;
     }
 
-    // Optionally handle reverse status changes if needed, but typically standard flow is pending -> processing -> delivered
-
     order.status = status;
     writeDB(db);
+
+    if (status === "Delivered") {
+        const related = db.orders.filter(o => o.id === order.id);
+        const first = related[0];
+        const billItems = related.map(o => {
+            const med = db.medicines.find(m => m.id === o.medicineId);
+            const price = med ? med.finalPrice : 0;
+            return {
+                name: o.medicineName,
+                quantity: o.quantity,
+                unitPrice: price,
+                discount: med ? med.discount || 0 : 0,
+                lineTotal: price * o.quantity
+            };
+        });
+        const bill = buildBill({
+            orderId: order.id,
+            ward: first.ward,
+            room: first.room,
+            doctor: first.doctor,
+            date: first.date,
+            time: first.time,
+            items: billItems
+        });
+        return res.json({ ...order, bill });
+    }
+
     res.json(order);
 });
 

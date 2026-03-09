@@ -424,6 +424,13 @@ body {
     perspective: 1000px;
 }
 
+/* reduce padding on smaller screens so content stays aligned */
+@media (max-width: 768px) {
+    .page-container {
+        padding: 24px;
+    }
+}
+
 .page {
     animation: fadeIn var(--transition-normal);
     max-width: 1280px;
@@ -447,6 +454,15 @@ body {
     align-items: flex-end;
     justify-content: space-between;
     margin-bottom: 40px;
+}
+
+/* stack header elements on narrow devices for better alignment */
+@media (max-width: 576px) {
+    .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+    }
 }
 
 .page-header h1 {
@@ -1346,5 +1362,28 @@ table.data-table tbody tr:hover {
     to {
         opacity: 1;
         transform: translateX(0);
+    }
+}
+/* ─── Cart & Bill additions ─── */
+.btn-sm {
+    padding: 6px 14px;
+    font-size: 0.82rem;
+    border-radius: 8px;
+}
+
+.mb-4 { margin-bottom: 16px; }
+
+@media (max-width: 768px) {
+    #cart-panel {
+        width: calc(100vw - 32px) !important;
+        right: 16px !important;
+    }
+
+    /* make hero and other full width on small viewports */
+    .hero {
+        flex-direction: column;
+        padding-top: 140px;
+        padding-bottom: 80px;
+        gap: 40px;
     }
 }
